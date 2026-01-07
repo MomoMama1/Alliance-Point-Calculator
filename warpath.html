@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Alliance Points Calculator</title>
+
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <style>
+    :root { color-scheme: light dark; }
+
+    *, *::before, *::after { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      padding: 18px;
+      display: flex;
+      justify-content: center;
+    }
+
+    .container {
+      --ui: 1;
+      width: 100%;
+      max-width: calc(560px * var(--ui));
+      display: flex;
+      flex-direction: column;
+      gap: calc(14px * var(--ui));
+    }
+
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: calc(10px * var(--ui));
+    }
+
+    h1 {
+      font-size: calc(20px * var(--ui));
+      margin: 0;
+      line-height: 1.2;
+      text-align: center;
+    }
+
+    .scaleControls {
+      display: flex;
+      gap: calc(8px * var(--ui));
+    }
+
+    .scaleBtn {
+      width: calc(36px * var(--ui));
+      height: calc(36px * var(--ui));
+      border-radius: calc(10px * var(--ui));
+      border: 1px solid rgba(127,127,127,0.45);
+      background: rgba(127,127,127,0.10);
+      font-size: calc(18px * var(--ui));
+      font-weight: 700;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .scaleBtn:active {
+      transform: translateY(1px);
+    }
+
+    .card {
+      border: 1px solid rgba(127,127,127,0.35);
+      border-radius: calc(14px * var(--ui));
+      padding: calc(16px * var(--ui));
+      display: flex;
+      flex-direction: column;
+      gap: calc(14px * var(--ui));
+    }
+
+    label {
+      display: flex;
+      flex-direction: column;
+      gap: calc(8px * var(--ui));
+      font-size: calc(15px * var(--ui));
+    }
+
+    input {
+      width: 100%;
+      padding: calc(14px * var(--ui));
+      font-size: calc(18px * var(--ui));
+      border-radius: calc(12px * var(--ui));
+      border: 1px solid rgba(127,127,127,0.45);
+      outline: none;
+      background: transparent;
+    }
+
+    input:focus {
+      border-color: rgba(80, 120, 255, 0.9);
+      box-shadow: 0 0 0 calc(3px * var(--ui)) rgba(80, 120, 255, 0.25);
+    }
+
+    .result {
+      font-weight: 800;
+      font-size: calc(16px * var(--ui));
+      line-height: 1.35;
+      padding: calc(14px * var(--ui));
+      border-radius: calc(12px * var(--ui));
+      background: rgba(127,127,127,0.12);
+      border: 1px solid rgba(127,127,127,0.25);
+      text-align: center;
+    }
+
+    .hint {
+      font-size: calc(13px * var(--ui));
+      opacity: 0.85;
+      line-height: 1.35;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    function parseAbbrevNumber(raw) {
+      // Accepts: "90k", "1.5M", "2B", "90000"
+      if (raw == null) return NaN;
+      const s0 = String(raw).trim();
+      if (s0 === "") return NaN;
+
+      const s = s0.replace(",", ".");
+      const match = s.match(/^([0-9]+(?:\.[0-9]+)?)\s*([kKmMbB])?$/);
+      if (!match) return NaN;
+
+      const value = Number(match[1]);
+      if (!Number.isFinite(value)) return NaN;
+
+      const suffix = match[2] || "";
+      let mult = 1;
+      if (suffix === "k" || suffix === "K") mult = 1_000;
+      else if (suffix === "M" || suffix === "m") mult = 1_000_000;
+      else if (suffix === "B" || suffix === "b") mult = 1_000_000_000;
+
+      return value * mult;
+    }
+
+    function formatDuration(totalMinutes) {
+      const h = Math.floor(totalMinutes / 60);
+      const m = totalMinutes % 60;
+
+      if (h === 0) return `${m} minute(s).`;
+      if (m === 0) return `${h} hour(s).`;
+      return `${h} hour(s) and ${m} minute(s).`;
+    }
+
+    function App() {
+      const [rate, setRate] = React.useState("");
+      const [current, setCurrent] = React.useState("");
+      const [target, setTarget] = React.useState("");
+
+      const [uiScale, setUiScale] = React.useState(1.15);
+      const MIN_SCALE = 0.9;
+      const MAX_SCALE = 1.6;
+      const STEP = 0.05;
+
+      function computeText() {
+        const r = parseAbbrevNumber(rate);
+        const c = parseAbbrevNumber(current);
+        const t = parseAbbrevNumber(target);
+
+        if (!Number.isFinite(r) || !Number.isFinite(c) || !Number.isFinite(t)) {
+          return "Enter all values (e.g. 9.25k, 1.5M, 2B).";
+        }
+        if (r <= 0) {
+          return "Production rate must be strictly positive.";
+        }
+        if (t <= c) {
+          return "Target amount already reached.";
+        }
+
+        const hours = (t - c) / r;
+        const totalMinutes = Math.ceil(hours * 60);
+
+        return `Time required: ${formatDuration(totalMinutes)}`;
+      }
+
+      function decScale() {
+        setUiScale(s => Math.max(MIN_SCALE, Math.round((s - STEP) * 100) / 100));
+      }
+      function incScale() {
+        setUiScale(s => Math.min(MAX_SCALE, Math.round((s + STEP) * 100) / 100));
+      }
+
+      return (
+        <div className="container" style={{ "--ui": uiScale }}>
+          <div className="header">
+            <h1>Alliance Points Calculator</h1>
+            <div className="scaleControls">
+              <button className="scaleBtn" onClick={decScale} type="button" title="Decrease">−</button>
+              <button className="scaleBtn" onClick={incScale} type="button" title="Increase">+</button>
+            </div>
+          </div>
+
+          <div className="card">
+            <label>
+              Production rate (points / hour)
+              <input
+                type="text"
+                inputMode="decimal"
+                value={rate}
+                onChange={e => setRate(e.target.value)}
+                placeholder="e.g. 9.25k"
+              />
+            </label>
+
+            <label>
+              Current alliance points
+              <input
+                type="text"
+                inputMode="decimal"
+                value={current}
+                onChange={e => setCurrent(e.target.value)}
+                placeholder="e.g. 1.2M"
+              />
+            </label>
+
+            <label>
+              Target alliance points
+              <input
+                type="text"
+                inputMode="decimal"
+                value={target}
+                onChange={e => setTarget(e.target.value)}
+                placeholder="e.g. 2M"
+              />
+            </label>
+
+            <div className="result">{computeText()}</div>
+
+            <div className="hint">
+              Supported suffixes: <b>k</b>=1,000 · <b>M</b>=1,000,000 · <b>B</b>=1,000,000,000<br />
+              Examples: 90k, 1.5M, 2B
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById("root"));
+    root.render(<App />);
+  </script>
+</body>
+</html>
