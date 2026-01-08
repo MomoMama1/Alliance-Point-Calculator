@@ -116,6 +116,48 @@
       line-height: 1.35;
       text-align: center;
     }
+
+    .actions {
+      display: flex;
+      gap: calc(10px * var(--ui));
+      align-items: center;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    .primaryBtn {
+      padding: calc(12px * var(--ui)) calc(14px * var(--ui));
+      font-size: calc(15px * var(--ui));
+      font-weight: 800;
+      border-radius: calc(12px * var(--ui));
+      border: 1px solid rgba(127,127,127,0.45);
+      background: rgba(80, 120, 255, 0.18);
+      cursor: pointer;
+    }
+
+    .primaryBtn:active {
+      transform: translateY(1px);
+    }
+
+    .primaryBtn:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+
+    .countdownBox {
+      padding: calc(12px * var(--ui));
+      border-radius: calc(12px * var(--ui));
+      border: 1px solid rgba(127,127,127,0.25);
+      background: rgba(127,127,127,0.08);
+      text-align: center;
+      font-size: calc(14px * var(--ui));
+      line-height: 1.35;
+    }
+
+    .muted {
+      opacity: 0.85;
+      font-weight: 650;
+    }
   </style>
 </head>
 <body>
@@ -153,6 +195,37 @@
       return `${h} hour(s) and ${m} minute(s).`;
     }
 
+    function pad2(n) {
+      return String(n).padStart(2, "0");
+    }
+
+    function formatHHMM(date) {
+      const h = pad2(date.getHours());
+      const m = pad2(date.getMinutes());
+      return `${h}:${m}`;
+    }
+
+    function computeMinutes(rate, current, target) {
+      const r = parseAbbrevNumber(rate);
+      const c = parseAbbrevNumber(current);
+      const t = parseAbbrevNumber(target);
+
+      if (!Number.isFinite(r) || !Number.isFinite(c) || !Number.isFinite(t)) {
+        return { ok: false, message: "Enter all values (e.g. 9.25k, 1.5M, 2B)." };
+      }
+      if (r <= 0) {
+        return { ok: false, message: "Production rate must be strictly positive." };
+      }
+      if (t <= c) {
+        return { ok: false, message: "Target amount already reached." };
+      }
+
+      const hours = (t - c) / r;
+      const totalMinutes = Math.ceil(hours * 60);
+
+      return { ok: true, totalMinutes };
+    }
+
     function App() {
       const [rate, setRate] = React.useState("");
       const [current, setCurrent] = React.useState("");
@@ -163,26 +236,83 @@
       const MAX_SCALE = 1.6;
       const STEP = 0.05;
 
+      // Countdown state
+      const [countdownActive, setCountdownActive] = React.useState(false);
+      const [endTs, setEndTs] = React.useState(null); // number (ms since epoch)
+      const [startMinutes, setStartMinutes] = React.useState(null); // minutes fixed at click
+      const [remainingMinutes, setRemainingMinutes] = React.useState(null);
+
+      const intervalRef = React.useRef(null);
+
       function computeText() {
-        const r = parseAbbrevNumber(rate);
-        const c = parseAbbrevNumber(current);
-        const t = parseAbbrevNumber(target);
-
-        if (!Number.isFinite(r) || !Number.isFinite(c) || !Number.isFinite(t)) {
-          return "Enter all values (e.g. 9.25k, 1.5M, 2B).";
-        }
-        if (r <= 0) {
-          return "Production rate must be strictly positive.";
-        }
-        if (t <= c) {
-          return "Target amount already reached.";
-        }
-
-        const hours = (t - c) / r;
-        const totalMinutes = Math.ceil(hours * 60);
-
-        return `Time required: ${formatDuration(totalMinutes)}`;
+        const res = computeMinutes(rate, current, target);
+        if (!res.ok) return res.message;
+        return `Time required: ${formatDuration(res.totalMinutes)}`;
       }
+
+      function stopCountdown() {
+        if (intervalRef.current) {
+          clearInterval(intervalRef.current);
+          intervalRef.current = null;
+        }
+        setCountdownActive(false);
+        setEndTs(null);
+        setStartMinutes(null);
+        setRemainingMinutes(null);
+      }
+
+      function tickCountdown(endTimestampMs) {
+        const now = Date.now();
+        const remainingMs = Math.max(0, endTimestampMs - now);
+        const remMin = Math.ceil(remainingMs / 60000); // minute-precision display
+        setRemainingMinutes(remMin);
+
+        if (remainingMs <= 0) {
+          // ensure we stop cleanly before alert
+          if (intervalRef.current) {
+            clearInterval(intervalRef.current);
+            intervalRef.current = null;
+          }
+          setCountdownActive(false);
+          setRemainingMinutes(0);
+          window.alert("Countdown finished: target should be reached now.");
+        }
+      }
+
+      function startCountdown() {
+        const res = computeMinutes(rate, current, target);
+        if (!res.ok) {
+          window.alert(res.message);
+          return;
+        }
+
+        // Restart from zero on every click (your requirement)
+        if (intervalRef.current) {
+          clearInterval(intervalRef.current);
+          intervalRef.current = null;
+        }
+
+        const minutes = res.totalMinutes;
+        const endTimestampMs = Date.now() + minutes * 60 * 1000;
+
+        setCountdownActive(true);
+        setStartMinutes(minutes);
+        setEndTs(endTimestampMs);
+
+        // Set immediately, then update regularly
+        tickCountdown(endTimestampMs);
+
+        intervalRef.current = setInterval(() => {
+          tickCountdown(endTimestampMs);
+        }, 1000);
+      }
+
+      // Cleanup on unmount
+      React.useEffect(() => {
+        return () => {
+          if (intervalRef.current) clearInterval(intervalRef.current);
+        };
+      }, []);
 
       function decScale() {
         setUiScale(s => Math.max(MIN_SCALE, Math.round((s - STEP) * 100) / 100));
@@ -190,6 +320,8 @@
       function incScale() {
         setUiScale(s => Math.min(MAX_SCALE, Math.round((s + STEP) * 100) / 100));
       }
+
+      const countdownEndText = endTs ? formatHHMM(new Date(endTs)) : null;
 
       return (
         <div className="container" style={{ "--ui": uiScale }}>
@@ -236,6 +368,36 @@
             </label>
 
             <div className="result">{computeText()}</div>
+
+            <div className="actions">
+              <button className="primaryBtn" type="button" onClick={startCountdown}>
+                Start countdown
+              </button>
+
+              {countdownActive && (
+                <button className="primaryBtn" type="button" onClick={stopCountdown}>
+                  Stop
+                </button>
+              )}
+            </div>
+
+            {(countdownActive || endTs) && (
+              <div className="countdownBox">
+                {startMinutes != null && (
+                  <div className="muted">Fixed duration at start: {formatDuration(startMinutes)}</div>
+                )}
+                {remainingMinutes != null && (
+                  <div style={{ marginTop: "6px", fontWeight: 900 }}>
+                    Countdown: {remainingMinutes} minute(s) remaining
+                  </div>
+                )}
+                {countdownEndText && (
+                  <div style={{ marginTop: "6px" }}>
+                    Ends at: <b>{countdownEndText}</b>
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="hint">
               Supported suffixes: <b>k</b>=1,000 · <b>M</b>=1,000,000 · <b>B</b>=1,000,000,000<br />
