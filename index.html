@@ -158,6 +158,14 @@
       opacity: 0.85;
       font-weight: 650;
     }
+
+    .dots {
+      display: inline-block;
+      min-width: 22px;
+      text-align: left;
+      letter-spacing: 2px;
+      opacity: 0.9;
+    }
   </style>
 </head>
 <body>
@@ -242,6 +250,9 @@
       const [startMinutes, setStartMinutes] = React.useState(null); // minutes fixed at click
       const [remainingMinutes, setRemainingMinutes] = React.useState(null);
 
+      // Dots animation state
+      const [dotFrame, setDotFrame] = React.useState(0);
+
       const intervalRef = React.useRef(null);
 
       function computeText() {
@@ -261,14 +272,23 @@
         setRemainingMinutes(null);
       }
 
+      function dots() {
+        const frames = [".", "..", "...", ".."];
+        return frames[dotFrame] || ".";
+      }
+
       function tickCountdown(endTimestampMs) {
+        // animation (keeps moving while active)
+        setDotFrame(f => (f + 1) % 4);
+
         const now = Date.now();
         const remainingMs = Math.max(0, endTimestampMs - now);
-        const remMin = Math.ceil(remainingMs / 60000); // minute-precision display
+
+        // minute-precision display
+        const remMin = Math.ceil(remainingMs / 60000);
         setRemainingMinutes(remMin);
 
         if (remainingMs <= 0) {
-          // ensure we stop cleanly before alert
           if (intervalRef.current) {
             clearInterval(intervalRef.current);
             intervalRef.current = null;
@@ -286,7 +306,7 @@
           return;
         }
 
-        // Restart from zero on every click (your requirement)
+        // Restart from zero on every click
         if (intervalRef.current) {
           clearInterval(intervalRef.current);
           intervalRef.current = null;
@@ -298,6 +318,7 @@
         setCountdownActive(true);
         setStartMinutes(minutes);
         setEndTs(endTimestampMs);
+        setDotFrame(0);
 
         // Set immediately, then update regularly
         tickCountdown(endTimestampMs);
@@ -386,11 +407,14 @@
                 {startMinutes != null && (
                   <div className="muted">Fixed duration at start: {formatDuration(startMinutes)}</div>
                 )}
+
                 {remainingMinutes != null && (
                   <div style={{ marginTop: "6px", fontWeight: 900 }}>
-                    Countdown: {remainingMinutes} minute(s) remaining
+                    Countdown<span className="dots">{dots()}</span>{" "}
+                    {formatDuration(remainingMinutes)} remaining
                   </div>
                 )}
+
                 {countdownEndText && (
                   <div style={{ marginTop: "6px" }}>
                     Ends at: <b>{countdownEndText}</b>
