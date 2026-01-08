@@ -200,7 +200,12 @@
 
       if (h === 0) return `${m} minute(s).`;
       if (m === 0) return `${h} hour(s).`;
-      return `${h} hour(s) and ${m} minute(s).`;
+      return `${h} hour(s) and ${m} minute(s)`;
+    }
+
+    function formatDurationNoDot(totalMinutes) {
+      const s = formatDuration(totalMinutes);
+      return s.endsWith(".") ? s.slice(0, -1) : s;
     }
 
     function pad2(n) {
@@ -411,7 +416,7 @@
                 {remainingMinutes != null && (
                   <div style={{ marginTop: "6px", fontWeight: 900 }}>
                     Countdown<span className="dots">{dots()}</span>{" "}
-                    {formatDuration(remainingMinutes)} remaining
+                    {formatDurationNoDot(remainingMinutes)} remaining
                   </div>
                 )}
 
